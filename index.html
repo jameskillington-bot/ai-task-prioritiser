@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Automation Suitability Assessor</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+      background: #fff;
+      color: #1d1d1f;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      border-bottom: 0.5px solid #d2d2d7;
+      padding: 20px 40px;
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+    }
+
+    header h1 {
+      font-size: 17px;
+      font-weight: 600;
+      color: #1d1d1f;
+      letter-spacing: -0.3px;
+    }
+
+    header p {
+      font-size: 13px;
+      color: #6e6e73;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 440px 1fr;
+      min-height: calc(100vh - 61px);
+    }
+
+    /* ── LEFT PANEL ── */
+    .left-panel {
+      border-right: 0.5px solid #d2d2d7;
+      padding: 32px;
+      overflow-y: auto;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #6e6e73;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .form-group { margin-bottom: 16px; }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: #1d1d1f;
+      margin-bottom: 6px;
+    }
+
+    input[type="text"], textarea {
+      width: 100%;
+      padding: 9px 12px;
+      border: 0.5px solid #d2d2d7;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      color: #1d1d1f;
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input[type="text"]:focus, textarea:focus { border-color: #000; }
+
+    textarea { height: 68px; resize: none; }
+
+    .divider { border: none; border-top: 0.5px solid #d2d2d7; margin: 24px 0; }
+
+    .criteria-item {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 0.5px solid #f0f0f0;
+      gap: 16px;
+    }
+
+    .criteria-info { flex: 1; }
+
+    .criteria-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: #1d1d1f;
+      margin-bottom: 3px;
+    }
+
+    .criteria-hint {
+      font-size: 11px;
+      color: #6e6e73;
+      line-height: 1.45;
+    }
+
+    .score-input-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      min-width: 52px;
+    }
+
+    input[type="number"] {
+      width: 52px;
+      height: 36px;
+      text-align: center;
+      border: 0.5px solid #d2d2d7;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 500;
+      color: #1d1d1f;
+      background: #fff;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+    input[type="number"]:focus { border-color: #000; }
+
+    .score-label { font-size: 10px; color: #aeaeb2; }
+
+    .live-score {
+      background: #f5f5f7;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-top: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .live-score-label {
+      font-size: 11px;
+      color: #6e6e73;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    .live-score-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #1d1d1f;
+      letter-spacing: -1px;
+    }
+
+    .live-score-value span {
+      font-size: 14px;
+      font-weight: 400;
+      color: #6e6e73;
+    }
+
+    .suitability-pill {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 20px;
+    }
+
+    .suit-high     { background: #e3f5e9; color: #1a7a3a; }
+    .suit-moderate { background: #fff8e1; color: #8a6200; }
+    .suit-low      { background: #ffeee0; color: #c25200; }
+    .suit-poor     { background: #fce8e8; color: #b91c1c; }
+    .suit-none     { background: #f0f0f0; color: #6e6e73; }
+
+    .add-btn {
+      width: 100%;
+      padding: 12px;
+      background: #000;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 16px;
+      letter-spacing: -0.2px;
+      transition: opacity 0.15s;
+    }
+
+    .add-btn:hover  { opacity: 0.82; }
+    .add-btn:active { opacity: 0.65; }
+
+    /* ── RIGHT PANEL ── */
+    .right-panel {
+      padding: 32px;
+      background: #fafafa;
+    }
+
+    .right-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    .right-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: #1d1d1f;
+      letter-spacing: -0.3px;
+    }
+
+    .task-count { font-size: 13px; color: #6e6e73; }
+
+    .action-bar { display: flex; gap: 8px; margin-bottom: 24px; }
+
+    .action-btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      border: 0.5px solid #d2d2d7;
+      background: #fff;
+      color: #1d1d1f;
+    }
+
+    .action-btn:hover { opacity: 0.7; }
+    .action-btn.primary { background: #000; color: #fff; border-color: #000; }
+    .action-btn.danger  { color: #b91c1c; border-color: #fca5a5; }
+
+    .task-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .task-card {
+      background: #fff;
+      border: 0.5px solid #e5e5ea;
+      border-radius: 12px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      transition: box-shadow 0.15s;
+    }
+
+    .task-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+
+    .rank-badge {
+      font-size: 12px;
+      font-weight: 700;
+      color: #aeaeb2;
+      min-width: 22px;
+      text-align: center;
+    }
+
+    .rank-badge.gold   { color: #b8860b; }
+    .rank-badge.silver { color: #707070; }
+    .rank-badge.bronze { color: #8b5c2e; }
+
+    .task-info { flex: 1; }
+
+    .task-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1d1d1f;
+      margin-bottom: 2px;
+      letter-spacing: -0.2px;
+    }
+
+    .task-meta { font-size: 12px; color: #6e6e73; }
+
+    .task-score-group {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+
+    .task-score {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1d1d1f;
+      letter-spacing: -0.5px;
+    }
+
+    .task-score span { font-size: 12px; font-weight: 400; color: #6e6e73; }
+
+    .remove-btn {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: none;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      color: #aeaeb2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, color 0.15s;
+      flex-shrink: 0;
+    }
+
+    .remove-btn:hover { background: #f5f5f7; color: #b91c1c; }
+
+    .empty-state {
+      text-align: center;
+      padding: 80px 40px;
+    }
+
+    .empty-icon { font-size: 36px; margin-bottom: 14px; opacity: 0.25; }
+
+    .empty-state p   { font-size: 15px; font-weight: 500; color: #6e6e73; margin-bottom: 6px; }
+    .empty-state small { font-size: 13px; color: #aeaeb2; }
+
+    .guidance-banner {
+      background: #f5f5f7;
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      font-size: 12px;
+      color: #6e6e73;
+      line-height: 1.55;
+    }
+
+    .guidance-banner strong { color: #1d1d1f; font-weight: 600; }
+
+    .overflow-note {
+      text-align: center;
+      font-size: 12px;
+      color: #aeaeb2;
+      padding: 12px 0;
+    }
+
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+      .left-panel { border-right: none; border-bottom: 0.5px solid #d2d2d7; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>AI Automation Suitability Assessor</h1>
+  <p>Evaluate tasks for AI / LLM / agentic workflow automation</p>
+</header>
+
+<div class="container">
+
+  <!-- ── LEFT: ENTRY FORM ── -->
+  <div class="left-panel">
+
+    <div class="guidance-banner">
+      <strong>How to assess:</strong> Score each criterion 1–5, where <strong>5 = highest suitability</strong> for automation. Assess the task as it exists today — not an idealised version. When in doubt, score conservatively. An average ≥ 4 indicates strong automation potential.
+    </div>
+
+    <p class="section-title">Task Details</p>
+
+    <div class="form-group">
+      <label for="taskName">Task Name</label>
+      <input type="text" id="taskName" placeholder="e.g. Monthly invoice processing">
+    </div>
+
+    <div class="form-group">
+      <label for="teamName">Team</label>
+      <input type="text" id="teamName" placeholder="e.g. Finance">
+    </div>
+
+    <div class="form-group">
+      <label for="taskDesc">Description <span style="color:#aeaeb2; font-weight:400">(optional)</span></label>
+      <textarea id="taskDesc" placeholder="Brief description of what this task involves…"></textarea>
+    </div>
+
+    <hr class="divider">
+    <p class="section-title">Assessment Criteria</p>
+
+    <div id="criteriaList"></div>
+
+    <div class="live-score">
+      <div>
+        <div class="live-score-label">Average Score</div>
+        <div class="live-score-value" id="liveScore">–<span> / 5</span></div>
+      </div>
+      <div id="suitabilityPill" class="suitability-pill suit-none">Not scored</div>
+    </div>
+
+    <button class="add-btn" onclick="addTask()">Add Task →</button>
+
+  </div>
+
+  <!-- ── RIGHT: RANKED LIST ── -->
+  <div class="right-panel">
+
+    <div class="right-header">
+      <div class="right-title">Prioritised Task List</div>
+      <div class="task-count" id="taskCount">0 tasks assessed</div>
+    </div>
+
+    <div class="action-bar">
+      <button class="action-btn primary" onclick="exportExcel()">Export to Excel</button>
+      <button class="action-btn" id="copyBtn" onclick="copyAsText()">Copy as Text</button>
+      <button class="action-btn danger" onclick="resetAll()">Reset All</button>
+    </div>
+
+    <div class="task-list" id="taskList">
+      <div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <p>No tasks yet</p>
+        <small>Score and add tasks using the form on the left</small>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const CRITERIA = [
+  {
+    id: 'inputClarity',
+    name: 'Input Clarity',
+    hint: 'Are inputs structured and predictable? (1 = ad-hoc/unstructured, 5 = fully standardised)'
+  },
+  {
+    id: 'outputClarity',
+    name: 'Output Clarity',
+    hint: 'Is the expected output well-defined? (1 = highly variable, 5 = consistent and specific)'
+  },
+  {
+    id: 'dataQuality',
+    name: 'Data Quality',
+    hint: 'Is underlying data clean, complete, reliable? (1 = poor/inconsistent, 5 = clean/structured)'
+  },
+  {
+    id: 'decisionLogic',
+    name: 'Decision Logic Simplicity',
+    hint: 'How rule-based is the logic? (1 = complex judgment required, 5 = clear rules/heuristics)'
+  },
+  {
+    id: 'exceptionFreq',
+    name: 'Exception Frequency',
+    hint: 'How rarely do edge cases occur? (1 = frequent exceptions, 5 = very rare/predictable)'
+  },
+  {
+    id: 'timeSavings',
+    name: 'Time Savings Potential',
+    hint: 'How significant is the potential saving? (1 = minimal, 5 = very high volume/effort)'
+  },
+  {
+    id: 'riskCompliance',
+    name: 'Risk & Compliance',
+    hint: 'How low is the risk if automation errs? (1 = high risk/regulated, 5 = low risk/forgiving)'
+  },
+  {
+    id: 'triggerPredict',
+    name: 'Trigger Predictability',
+    hint: 'How consistent is the trigger/schedule? (1 = unpredictable/reactive, 5 = scheduled/event-driven)'
+  }
+];
+
+let tasks = [];
+
+/* ── Build criteria inputs ── */
+function buildCriteria() {
+  document.getElementById('criteriaList').innerHTML = CRITERIA.map(c => `
+    <div class="criteria-item">
+      <div class="criteria-info">
+        <div class="criteria-name">${c.name}</div>
+        <div class="criteria-hint">${c.hint}</div>
+      </div>
+      <div class="score-input-wrap">
+        <input type="number" id="${c.id}" min="1" max="5" placeholder="–"
+               oninput="updateLiveScore()" onchange="clampScore(this)">
+        <div class="score-label">1 – 5</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function clampScore(input) {
+  const val = parseInt(input.value);
+  if (isNaN(val)) return;
+  if (val < 1) input.value = 1;
+  if (val > 5) input.value = 5;
+  updateLiveScore();
+}
+
+function getScores() {
+  return CRITERIA.map(c => {
+    const val = parseInt(document.getElementById(c.id).value);
+    return isNaN(val) ? null : Math.min(5, Math.max(1, val));
+  });
+}
+
+function calcAverage(scores) {
+  const valid = scores.filter(s => s !== null);
+  if (!valid.length) return null;
+  return valid.reduce((a, b) => a + b, 0) / valid.length;
+}
+
+function getSuitability(avg) {
+  if (avg === null) return { label: 'Not scored',      cls: 'suit-none' };
+  if (avg >= 4)     return { label: 'High Suitability', cls: 'suit-high' };
+  if (avg >= 3)     return { label: 'Moderate',         cls: 'suit-moderate' };
+  if (avg >= 2)     return { label: 'Low Suitability',  cls: 'suit-low' };
+  return               { label: 'Poor Fit',           cls: 'suit-poor' };
+}
+
+function updateLiveScore() {
+  const avg  = calcAverage(getScores());
+  const suit = getSuitability(avg);
+  document.getElementById('liveScore').innerHTML =
+    avg !== null ? `${avg.toFixed(1)}<span> / 5</span>` : `–<span> / 5</span>`;
+  const pill = document.getElementById('suitabilityPill');
+  pill.textContent = suit.label;
+  pill.className   = `suitability-pill ${suit.cls}`;
+}
+
+/* ── Add task ── */
+function addTask() {
+  const name = document.getElementById('taskName').value.trim();
+  if (!name) {
+    const el = document.getElementById('taskName');
+    el.focus();
+    el.style.borderColor = '#ff3b30';
+    setTimeout(() => el.style.borderColor = '', 2000);
+    return;
+  }
+
+  const scores = getScores();
+  const avg    = calcAverage(scores);
+  if (avg === null) {
+    alert('Please score at least one criterion before adding the task.');
+    return;
+  }
+
+  tasks.push({
+    id: Date.now(),
+    name,
+    team:        document.getElementById('teamName').value.trim(),
+    description: document.getElementById('taskDesc').value.trim(),
+    scores:      Object.fromEntries(CRITERIA.map((c, i) => [c.id, scores[i]])),
+    average:     avg
+  });
+
+  tasks.sort((a, b) => b.average - a.average);
+  renderTasks();
+  clearForm();
+}
+
+/* ── Remove ── */
+function removeTask(id) {
+  tasks = tasks.filter(t => t.id !== id);
+  renderTasks();
+}
+
+/* ── Render list ── */
+function renderTasks() {
+  const container = document.getElementById('taskList');
+  const countEl   = document.getElementById('taskCount');
+  const top10     = tasks.slice(0, 10);
+
+  countEl.textContent = `${tasks.length} task${tasks.length !== 1 ? 's' : ''} assessed`;
+
+  if (!tasks.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <p>No tasks yet</p>
+        <small>Score and add tasks using the form on the left</small>
+      </div>`;
+    return;
+  }
+
+  const rankClass = i => i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+
+  container.innerHTML = top10.map((task, i) => {
+    const suit = getSuitability(task.average);
+    const meta = [task.team, task.description].filter(Boolean).join(' · ');
+    return `
+      <div class="task-card">
+        <div class="rank-badge ${rankClass(i)}">${i + 1}</div>
+        <div class="task-info">
+          <div class="task-name">${esc(task.name)}</div>
+          ${meta ? `<div class="task-meta">${esc(meta)}</div>` : ''}
+        </div>
+        <div class="task-score-group">
+          <div class="task-score">${task.average.toFixed(1)}<span> / 5</span></div>
+          <div class="suitability-pill ${suit.cls}" style="font-size:11px;padding:3px 9px">${suit.label}</div>
+        </div>
+        <button class="remove-btn" onclick="removeTask(${task.id})" title="Remove">×</button>
+      </div>`;
+  }).join('');
+
+  if (tasks.length > 10) {
+    container.innerHTML += `<div class="overflow-note">${tasks.length - 10} further task${tasks.length - 10 !== 1 ? 's' : ''} not shown — top 10 displayed</div>`;
+  }
+}
+
+/* ── Clear form ── */
+function clearForm() {
+  ['taskName','teamName','taskDesc'].forEach(id => document.getElementById(id).value = '');
+  CRITERIA.forEach(c => document.getElementById(c.id).value = '');
+  updateLiveScore();
+}
+
+/* ── Reset all ── */
+function resetAll() {
+  if (tasks.length && !confirm('Reset all tasks? This cannot be undone.')) return;
+  tasks = [];
+  clearForm();
+  renderTasks();
+}
+
+/* ── Export to Excel ── */
+function exportExcel() {
+  if (!tasks.length) { alert('No tasks to export.'); return; }
+  const top10   = tasks.slice(0, 10);
+  const headers = ['Rank','Task Name','Team','Description','Avg Score','Suitability',
+                   ...CRITERIA.map(c => c.name)];
+  const rows    = top10.map((t, i) => [
+    i + 1, t.name, t.team || '', t.description || '',
+    parseFloat(t.average.toFixed(2)),
+    getSuitability(t.average).label,
+    ...CRITERIA.map(c => t.scores[c.id] ?? '')
+  ]);
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [{wch:6},{wch:30},{wch:18},{wch:35},{wch:10},{wch:18},
+                 ...CRITERIA.map(() => ({wch:24}))];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'AI Assessment');
+  XLSX.writeFile(wb, 'ai-automation-assessment.xlsx');
+}
+
+/* ── Copy as text ── */
+function copyAsText() {
+  if (!tasks.length) { alert('No tasks to copy.'); return; }
+  const lines = [
+    'AI AUTOMATION SUITABILITY — TOP 10 TASKS',
+    '─'.repeat(44), '',
+    ...tasks.slice(0, 10).map((t, i) => {
+      const suit = getSuitability(t.average);
+      return `${i + 1}. ${t.name}${t.team ? ` (${t.team})` : ''}\n   Score: ${t.average.toFixed(1)}/5  ·  ${suit.label}`;
+    }),
+    '', `Generated: ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}`
+  ];
+  navigator.clipboard.writeText(lines.join('\n')).then(() => {
+    const btn = document.getElementById('copyBtn');
+    const orig = btn.textContent;
+    btn.textContent = 'Copied ✓';
+    setTimeout(() => btn.textContent = orig, 2000);
+  });
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── Init ── */
+buildCriteria();
+renderTasks();
+</script>
+</body>
+</html>
