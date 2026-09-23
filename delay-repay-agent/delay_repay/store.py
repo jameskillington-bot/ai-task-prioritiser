@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS journeys (
     operator TEXT,
     claim_reference TEXT,
     arrival_override TEXT,
+    options TEXT,
     notes TEXT,
     updated_at TEXT
 );
@@ -34,6 +35,9 @@ class Store:
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        cols = {r["name"] for r in self.db.execute("PRAGMA table_info(journeys)")}
+        if "options" not in cols:
+            self.db.execute("ALTER TABLE journeys ADD COLUMN options TEXT")
 
     def message_seen(self, msg_id: str) -> bool:
         return self.db.execute("SELECT 1 FROM messages WHERE id=?", (msg_id,)).fetchone() is not None

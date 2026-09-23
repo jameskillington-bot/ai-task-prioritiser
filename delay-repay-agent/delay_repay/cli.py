@@ -12,7 +12,8 @@ import anthropic
 
 from . import pipeline
 from .config import load, secret
-from .models import ClaimStatus, Journey, Leg, Ticket, TicketType
+from .models import ClaimStatus, Journey, Leg, Ticket, TicketType, TrainOption
+from .notify import confirm_request
 from .rtt import RttClient
 from .tickets import journeys_for
 
@@ -42,8 +43,14 @@ def cmd_status(settings, args):
         status = r["status"] + (f" ({r['claim_reference']})" if r["claim_reference"] else "")
         if r["status"] == ClaimStatus.eligible.value and not settings.auto_submit:
             status += " - run `approve`"
+        if r["status"] == ClaimStatus.confirm_train.value:
+            amount = "≤" + amount
         print(f"{r['id']:16}  {j.travel_date}  {j.origin}-{j.destination}  {delay if delay is not None else '':>5}  "
               f"{amount:>7}  {r['operator'] or '':2}  {status}")
+        if r["status"] == ClaimStatus.confirm_train.value:
+            options = [TrainOption.model_validate(o) for o in json.loads(r["options"])]
+            deadline = pipeline._deadline(j, settings)
+            print("\n".join("      " + line for line in confirm_request(r, j, options, deadline).splitlines()[1:]))
         if args.verbose and r["notes"]:
             for n in json.loads(r["notes"]):
                 print(f"{'':20}- {n}")
@@ -61,6 +68,25 @@ def cmd_approve(settings, args):
     print(pipeline.submit_one(settings, store, anthropic.Anthropic(), args.journey_id, args.dry_run))
 
 
+def cmd_confirm(settings, args):
+    """Say which train you caught on a flexible ticket."""
+    store = pipeline.open_store(settings)
+    row = store.journey(args.journey_id)
+    if row is None or row["status"] != ClaimStatus.confirm_train.value:
+        sys.exit("That journey is not waiting for a train confirmation (see `status`).")
+    if (args.number is None) == (not args.none):
+        sys.exit("Give the option number of the train you caught, or --none.")
+    data = RttClient(secret("rtt_username") or "", secret("rtt_password") or "", settings.rtt_base_url)
+    try:
+        status = pipeline.confirm_train(settings, store, args.journey_id, None if args.none else args.number, data, datetime.now())
+    except ValueError as e:
+        sys.exit(str(e))
+    row = store.journey(args.journey_id)
+    print(status.value + (f": £{row['amount']:.2f}" if row["amount"] else ""))
+    if status == ClaimStatus.eligible and settings.auto_submit:
+        print(pipeline.submit_one(settings, store, anthropic.Anthropic(), args.journey_id, dry_run=False))
+
+
 def cmd_add_ticket(settings, args):
     """For paper tickets or bookings not in your mailbox."""
     out = [Leg(origin_crs=args.origin.upper(), destination_crs=args.destination.upper(),
@@ -71,9 +97,10 @@ def cmd_add_ticket(settings, args):
                     departure=_dt(args.return_depart), arrival=_dt(args.return_arrive) if args.return_arrive else None,
                     operator=args.operator)]
     ticket = Ticket(booking_reference=args.ref, ticket_type=TicketType(args.type), price_paid=args.price,
-                    outbound_legs=out, return_legs=back, evidence_path=args.evidence, railcard=args.railcard)
+                    outbound_legs=out, return_legs=back, evidence_path=args.evidence, railcard=args.railcard,
+                    train_specific=args.advance)
     store = pipeline.open_store(settings)
-    added = store.add_ticket(ticket, journeys_for(ticket))
+    added = store.add_ticket(ticket, journeys_for(ticket, settings.open_return_time))
     print(f"Added {added} journey(s).")
 
 
@@ -132,7 +159,14 @@ def main(argv=None):
     t.add_argument("--operator")
     t.add_argument("--railcard")
     t.add_argument("--evidence", help="path to ticket photo/PDF")
+    t.add_argument("--advance", action="store_true", help="Advance ticket: valid on the booked train only")
     t.set_defaults(fn=cmd_add_ticket)
+
+    cf = sub.add_parser("confirm", help="say which train you caught (flexible tickets)")
+    cf.add_argument("journey_id")
+    cf.add_argument("number", nargs="?", type=int, help="option number from `status` or the email")
+    cf.add_argument("--none", action="store_true", help="you weren't on any of the listed trains")
+    cf.set_defaults(fn=cmd_confirm)
 
     tr = sub.add_parser("travelled", help="log a season-ticket travel day")
     tr.add_argument("date", nargs="?")

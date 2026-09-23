@@ -40,6 +40,9 @@ class Ticket(BaseModel):
     passengers: int = 1
     railcard: Optional[str] = None
     ticket_class: Literal["standard", "first"] = "standard"
+    # Advance tickets are only valid on the booked train. Anytime / Off-Peak
+    # tickets can be used on any train, so the time on the email is indicative.
+    train_specific: bool = False
     # Legs grouped by direction. For a return ticket, `return_legs` holds the
     # inbound trains (empty if an open return with no booked time).
     outbound_legs: list[Leg]
@@ -62,6 +65,10 @@ class Journey(BaseModel):
     ticket_id: str
     direction: Literal["outbound", "return"]
     legs: list[Leg]
+    # Open return with no booked time: the departure is a placeholder.
+    time_is_estimate: bool = False
+    # The passenger has said which train they caught; legs now describe it.
+    confirmed_train: bool = False
 
     @property
     def origin(self) -> str:
@@ -117,8 +124,23 @@ class Compensation(BaseModel):
     single_value: float
 
 
+class TrainOption(BaseModel):
+    """A train the passenger may have caught on a flexible ticket, and what it would pay."""
+
+    n: int
+    booked_departure: datetime
+    booked_arrival: datetime
+    actual_arrival: datetime
+    delay_minutes: int
+    cancelled: bool
+    operator_code: Optional[str]
+    amount: float
+    band: str
+
+
 class ClaimStatus(str, Enum):
     awaiting_travel = "awaiting_travel"
+    confirm_train = "confirm_train"
     no_delay = "no_delay"
     below_threshold = "below_threshold"
     eligible = "eligible"

@@ -26,6 +26,19 @@ Every step is something you are entitled to. The agent never inflates a claim.
 | Extra costs | Delays of 60+ minutes and cancellations are flagged, so you can also claim taxis or hotels under the Consumer Rights Act. |
 | Near misses | Delays just under the threshold are noted in `status -v`. |
 
+### Flexible tickets and the travel window
+
+Anytime and Off-Peak tickets aren't tied to one train, so the time on the email is only a guide. For these tickets the agent checks **every direct train from 60 minutes before to 120 minutes after the ticket time**. You can change this with `travel_window_before_minutes` and `travel_window_after_minutes`.
+
+- If no train in the window would pay anything, the journey is closed and you aren't asked.
+- If some would pay, you get an email (and `status` shows) the list, sorted by refund with the biggest first, including cancelled trains measured to the next one that ran. Reply with `./run.sh confirm <id> <n>`, or `--none`, and the agent claims the maximum you're entitled to for **that** train.
+
+It never picks a train for you. Delay Repay pays for the train you were actually on, and claiming for another one is a false claim that operators can check against ticket-gate data. Open returns with no booked time get a return journey on the same day, centred on `open_return_time`. Advance tickets (`train_specific`) only check the booked train. Window checks only cover direct routes; journeys with a change use the ticket times.
+
+`examples/swr-aldershot-waterloo.yaml` is a ready profile for SWR Aldershot ⇄ London Waterloo returns, with the Gmail mailbox.
+
+### Cancellations and missed connections
+
 When a journey was cancelled or you missed a connection, the agent assumes you caught the **earliest train that got you there**. That keeps claims honest. If you really arrived later (for example, the next train was too full to board), record it with `set-arrival`.
 
 ## Setup
@@ -72,6 +85,10 @@ Other commands:
 ./run.sh travelled 2026-09-22 --outbound
 ./run.sh travelled 2026-09-23 --none
 
+# Flexible ticket: say which train you caught (numbers are in the email / `status`)
+./run.sh confirm <journey-id> 2
+./run.sh confirm <journey-id> --none
+
 # You arrived later than the next available train
 ./run.sh set-arrival <journey-id> "2026-09-20 10:05"
 ```
@@ -96,7 +113,8 @@ delay_repay/
   compensation.py  Delay Repay rules
   operators.py     Train companies: scheme, claim page, allowed domains
   submitter.py     Claude browser agent (Anthropic tool runner + Playwright)
-  pipeline.py      Ingest → assess → submit
+  pipeline.py      Ingest → assess (window + confirmation for flexible tickets) → submit
+  notify.py        Email digest to yourself
   cli.py           Commands
 tests/             Rules, delay analysis, pipeline, and browser tools on a mock claim site
 ```

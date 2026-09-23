@@ -18,11 +18,11 @@ def settings(tmp_path, **kw):
     })
 
 
-def return_ticket():
+def return_ticket(train_specific=True):
     out = Leg(origin_crs="BRI", destination_crs="PAD", departure=datetime(2026, 9, 20, 7, 30))
     back = Leg(origin_crs="PAD", destination_crs="BRI", departure=datetime(2026, 9, 20, 17, 30))
     return Ticket(booking_reference="R1", ticket_type=TicketType.return_, price_paid=100.0,
-                  outbound_legs=[out], return_legs=[back])
+                  outbound_legs=[out], return_legs=[back], train_specific=train_specific)
 
 
 def rtt_both_ways(out_late, back_late):

@@ -47,6 +47,7 @@ class _ExtractedTicket(BaseModel):
     passengers: int
     railcard: Optional[str]
     ticket_class: str
+    train_specific: bool = Field(description="True only for Advance tickets valid on the booked train alone")
     outbound_legs: list[Leg]
     return_legs: list[Leg]
     season_valid_from: Optional[date]
@@ -68,6 +69,7 @@ Rules:
 - price_paid is what was paid for that ticket after railcard discount, excluding booking or card fees. For a return, the total return price.
 - Times are UK local time as shown. Leave arrival null if not shown.
 - Open returns without a booked return train: return_legs is empty.
+- train_specific is true only for Advance tickets (valid on the booked train only). Anytime, Off-Peak, Super Off-Peak and season tickets are not train specific.
 - Copy values exactly; never guess a price or time that is not in the email. If the email is not a confirmed ticket purchase, set is_rail_ticket_purchase false and tickets empty."""
 
 
@@ -115,7 +117,7 @@ def _body_and_attachments(msg: Message) -> tuple[str, list[tuple[str, str, bytes
     return ("\n".join(plain) or "\n".join(html)), files
 
 
-def fetch_ticket_emails(settings: Settings) -> list[tuple[str, Message]]:
+def fetch_ticket_emails(settings: Settings, skip=lambda msg_id: False) -> list[tuple[str, Message]]:
     mb = settings.mailbox
     password = secret("imap_password")
     if not mb or not password:
@@ -125,17 +127,22 @@ def fetch_ticket_emails(settings: Settings) -> list[tuple[str, Message]]:
     out = []
     with imaplib.IMAP4_SSL(mb.imap_host) as imap:
         imap.login(mb.username, password)
-        imap.select(mb.folder, readonly=True)
+        folder = mb.folder if mb.folder.startswith('"') else f'"{mb.folder}"'
+        imap.select(folder, readonly=True)
         _, ids = imap.search(None, "SINCE", since)
         for num in ids[0].split():
-            _, data = imap.fetch(num, "(RFC822)")
-            msg = email.message_from_bytes(data[0][1])
-            sender = email.utils.parseaddr(msg.get("From", ""))[1].lower()
+            # Headers first, so only rail emails are downloaded in full.
+            _, data = imap.fetch(num, "(BODY.PEEK[HEADER.FIELDS (FROM MESSAGE-ID)])")
+            head = email.message_from_bytes(data[0][1])
+            sender = email.utils.parseaddr(head.get("From", ""))[1].lower()
             domain = sender.rsplit("@", 1)[-1]
             if not any(domain == d or domain.endswith("." + d) for d in RAIL_SENDER_DOMAINS):
                 continue
-            msg_id = msg.get("Message-ID") or f"{mb.username}:{num.decode()}"
-            out.append((msg_id.strip(), msg))
+            msg_id = (head.get("Message-ID") or f"{mb.username}:{num.decode()}").strip()
+            if skip(msg_id):
+                continue
+            _, data = imap.fetch(num, "(BODY.PEEK[])")
+            out.append((msg_id, email.message_from_bytes(data[0][1])))
     return out
 
 
@@ -189,11 +196,17 @@ def involves_london(ticket: Ticket, extra: frozenset[str]) -> bool:
     return any(is_london(l.origin_crs, extra) or is_london(l.destination_crs, extra) for l in legs)
 
 
-def journeys_for(ticket: Ticket) -> list[Journey]:
+def journeys_for(ticket: Ticket, open_return_time: str = "17:30") -> list[Journey]:
     tid = ticket.ticket_id()
     out = [Journey(ticket_id=tid, direction="outbound", legs=ticket.outbound_legs)]
     if ticket.return_legs:
         out.append(Journey(ticket_id=tid, direction="return", legs=ticket.return_legs))
+    elif ticket.ticket_type == TicketType.return_ and not ticket.train_specific:
+        # Open return: same route reversed, on the day of travel, time unknown.
+        first, last = ticket.outbound_legs[0], ticket.outbound_legs[-1]
+        when = datetime.combine(first.departure.date(), datetime.strptime(open_return_time, "%H:%M").time())
+        leg = Leg(origin_crs=last.destination_crs, destination_crs=first.origin_crs, departure=when, operator=first.operator)
+        out.append(Journey(ticket_id=tid, direction="return", legs=[leg], time_is_estimate=True))
     return out
 
 

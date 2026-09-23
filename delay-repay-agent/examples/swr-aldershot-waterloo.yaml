@@ -1,0 +1,40 @@
+# Profile: South Western Railway, Aldershot (AHT) <-> London Waterloo (WAT), return tickets.
+# Copy to ../config.yaml and fill in the claimant details.
+
+claimant:
+  first_name: ""
+  last_name: ""
+  email: ""
+  phone: ""
+  address_line1: ""
+  town: ""
+  postcode: ""
+
+payment:
+  preference: [bank_transfer, paypal, card_refund, cheque]
+  account_name: ""
+
+# Gmail over IMAP. "[Gmail]/All Mail" also finds archived ticket emails.
+# Needs DELAY_REPAY_IMAP_PASSWORD = a Google app password.
+mailbox:
+  imap_host: imap.gmail.com
+  username: you@gmail.com
+  folder: "[Gmail]/All Mail"
+  lookback_days: 30
+  notify: true            # emails you when a train needs confirming
+  smtp_host: smtp.gmail.com
+
+# Anytime / Off-Peak returns can be used on any train. Every SWR train from
+# 60 min before to 120 min after the ticket time is checked; if any would pay,
+# you are emailed the list (biggest refund first) to pick the one you caught.
+travel_window_before_minutes: 60
+travel_window_after_minutes: 120
+# Open returns have no booked time: the window is centred on your usual return.
+open_return_time: "17:30"
+
+auto_submit: false        # set true once a few claims have gone through cleanly
+require_recorded_times: true
+
+operators:
+  SW:
+    scheme: DR15          # SWR pays from 15 minutes

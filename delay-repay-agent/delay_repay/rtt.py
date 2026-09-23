@@ -201,3 +201,42 @@ def analyse_journey(
         confident=confident,
         notes=notes,
     )
+
+
+def trains_in_window(data: TrainData, origin: str, destination: str, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+    """Booked (departure, arrival) of every direct passenger train in the window,
+    including ones that were later cancelled."""
+    probe = Leg(origin_crs=origin, destination_crs=destination, departure=start)
+    cache: dict = {}
+    found: dict[datetime, datetime] = {}
+    t = start
+    while t <= end:
+        for c in _candidates(data, probe, t, cache):
+            if c.booked_departure and c.booked_arrival and start <= c.booked_departure <= end:
+                found.setdefault(c.booked_departure, c.booked_arrival)
+        t += timedelta(hours=1)
+    return sorted(found.items())
+
+
+def analyse_window(
+    journey: Journey,
+    data: TrainData,
+    before_minutes: int,
+    after_minutes: int,
+    min_connection_minutes: int = 5,
+) -> list[DelayResult]:
+    """For a flexible ticket on a direct route: what happened to each train the
+    passenger could have caught. Each result treats that train as the one they
+    set out to catch, so a cancellation is measured to the next train."""
+    leg = journey.legs[0]
+    start = leg.departure - timedelta(minutes=before_minutes)
+    end = leg.departure + timedelta(minutes=after_minutes)
+    results = []
+    for dep, arr in trains_in_window(data, leg.origin_crs, leg.destination_crs, start, end):
+        option = journey.model_copy(update={"legs": [leg.model_copy(update={"departure": dep, "arrival": arr})]})
+        try:
+            r = analyse_journey(option, data, min_connection_minutes)
+        except LookupError:
+            continue
+        results.append(r.model_copy(update={"journey_id": journey.journey_id()}))
+    return results

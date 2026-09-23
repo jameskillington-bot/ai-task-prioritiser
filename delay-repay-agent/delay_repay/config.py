@@ -64,6 +64,10 @@ class Mailbox(BaseModel):
     username: str
     folder: str = "INBOX"
     lookback_days: int = 30
+    # Email yourself a digest (train confirmations, submitted claims) via SMTP
+    # with the same account and app password.
+    notify: bool = True
+    smtp_host: str = "smtp.gmail.com"
     # Password from env var DELAY_REPAY_IMAP_PASSWORD (use an app password).
 
 
@@ -75,6 +79,12 @@ class Settings(BaseModel):
     auto_submit: bool = False
     min_claim_amount: float = 0.01
     min_connection_minutes: int = 5
+    # Flexible (Anytime/Off-Peak) tickets: trains departing this long before or
+    # after the ticket time are checked, and you confirm which one you caught.
+    travel_window_before_minutes: int = 60
+    travel_window_after_minutes: int = 120
+    # Open returns have no booked time; the window is centred on this instead.
+    open_return_time: str = "17:30"
     wait_after_arrival_hours: int = 2
     claim_window_days: int = 28
     require_recorded_times: bool = True

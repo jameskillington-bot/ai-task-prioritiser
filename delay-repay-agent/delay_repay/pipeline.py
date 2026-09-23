@@ -8,11 +8,11 @@ from datetime import date, datetime, timedelta
 
 import anthropic
 
-from . import compensation, submitter
+from . import compensation, notify, submitter
 from .config import Settings, secret
-from .models import ClaimStatus, Compensation, DelayResult, Journey
+from .models import ClaimStatus, Compensation, DelayResult, Journey, Ticket, TrainOption
 from .operators import get_operator
-from .rtt import RttClient, TrainData, analyse_journey
+from .rtt import RttClient, TrainData, analyse_journey, analyse_window
 from .store import Store
 from .tickets import extract_tickets, fetch_ticket_emails, involves_london, journeys_for, season_journeys
 
@@ -35,7 +35,7 @@ def load_travel_log(settings: Settings) -> dict[str, list[str]]:
 def ingest(settings: Settings, store: Store, client: anthropic.Anthropic, today: date) -> int:
     extra = frozenset(s.upper() for s in settings.london_stations_extra)
     added = 0
-    for msg_id, msg in fetch_ticket_emails(settings):
+    for msg_id, msg in fetch_ticket_emails(settings, skip=store.message_seen):
         if store.message_seen(msg_id):
             continue
         try:
@@ -45,16 +45,23 @@ def ingest(settings: Settings, store: Store, client: anthropic.Anthropic, today:
             continue
         for t in tickets:
             if involves_london(t, extra):
-                added += store.add_ticket(t, journeys_for(t))
+                added += store.add_ticket(t, journeys_for(t, settings.open_return_time))
         store.mark_message(msg_id)
     for ticket, journeys in season_journeys(settings, load_travel_log(settings), today):
         added += store.add_ticket(ticket, journeys)
     return added
 
 
-def _ready_to_check(journey: Journey, settings: Settings, now: datetime) -> bool:
+def is_flexible(ticket: Ticket, journey: Journey) -> bool:
+    """Could the passenger have caught any train in the travel window?"""
+    return not ticket.train_specific and not journey.confirmed_train and len(journey.legs) == 1
+
+
+def _ready_to_check(journey: Journey, ticket: Ticket, settings: Settings, now: datetime) -> bool:
     last = journey.legs[-1]
     arrival = last.arrival or last.departure + timedelta(hours=3)
+    if is_flexible(ticket, journey):
+        arrival += timedelta(minutes=settings.travel_window_after_minutes)
     return now >= arrival + timedelta(hours=settings.wait_after_arrival_hours)
 
 
@@ -69,8 +76,10 @@ def assess(settings: Settings, store: Store, row, data: TrainData, now: datetime
     if now.date() > _deadline(journey, settings):
         store.update(row["id"], status=ClaimStatus.expired, notes=["Past the claim deadline."])
         return ClaimStatus.expired
-    if not _ready_to_check(journey, settings, now):
+    if not _ready_to_check(journey, ticket, settings, now):
         return ClaimStatus.awaiting_travel
+    if is_flexible(ticket, journey):
+        return _assess_window(settings, store, row, journey, ticket, data)
 
     delay = analyse_journey(journey, data, settings.min_connection_minutes)
     if row["arrival_override"]:
@@ -80,20 +89,7 @@ def assess(settings: Settings, store: Store, row, data: TrainData, now: datetime
         delay.confident = True
         delay.notes.append("Actual arrival time entered manually.")
 
-    op_code = delay.responsible_operator_code or journey.legs[0].operator
-    operator = get_operator(op_code, settings.operators)
-    scheme = operator.scheme if operator else "DR15"
-    comp = compensation.calculate(ticket, delay.delay_minutes, scheme)
-    notes = list(delay.notes)
-
-    if comp is not None:
-        # A return ticket can't pay out more than it cost, e.g. 120+ minute
-        # delays in both directions.
-        remaining = round(ticket.price_paid - store.claimed_total(row["ticket_id"], row["id"]), 2)
-        if comp.amount > remaining:
-            notes.append(f"Capped at £{remaining:.2f}: the rest of this ticket's value is already claimed.")
-            comp = comp.model_copy(update={"amount": max(0.0, remaining)})
-
+    comp, operator, op_code, scheme, notes = _value(settings, store, row, journey, ticket, delay)
     if comp is None or comp.amount < settings.min_claim_amount:
         status = ClaimStatus.no_delay if delay.delay_minutes < 15 else ClaimStatus.below_threshold
         if 10 <= delay.delay_minutes < compensation.threshold_minutes(scheme):
@@ -115,6 +111,76 @@ def assess(settings: Settings, store: Store, row, data: TrainData, now: datetime
         amount=comp.amount if comp else None, operator=operator.code if operator else op_code, notes=notes,
     )
     return status
+
+
+def _value(settings: Settings, store: Store, row, journey: Journey, ticket: Ticket, delay: DelayResult):
+    op_code = delay.responsible_operator_code or journey.legs[0].operator
+    operator = get_operator(op_code, settings.operators)
+    scheme = operator.scheme if operator else "DR15"
+    comp = compensation.calculate(ticket, delay.delay_minutes, scheme)
+    notes = list(delay.notes)
+    if comp is not None:
+        # A return ticket can't pay out more than it cost, e.g. 120+ minute
+        # delays in both directions.
+        remaining = round(ticket.price_paid - store.claimed_total(row["ticket_id"], row["id"]), 2)
+        if comp.amount > remaining:
+            notes.append(f"Capped at £{remaining:.2f}: the rest of this ticket's value is already claimed.")
+            comp = comp.model_copy(update={"amount": max(0.0, remaining)})
+    return comp, operator, op_code, scheme, notes
+
+
+def _assess_window(settings: Settings, store: Store, row, journey: Journey, ticket: Ticket, data: TrainData) -> ClaimStatus:
+    """Flexible ticket: value every train in the window, then ask which one was caught.
+
+    Delay Repay pays for the train you were actually on, so the agent never
+    picks the most delayed train by itself. If no train in the window would pay
+    anything there is nothing to ask."""
+    results = analyse_window(journey, data, settings.travel_window_before_minutes,
+                             settings.travel_window_after_minutes, settings.min_connection_minutes)
+    if not results:
+        raise LookupError(f"no trains found {journey.origin}->{journey.destination} around {journey.legs[0].departure:%H:%M}")
+    options = []
+    for r in results:
+        comp, _, _, _, _ = _value(settings, store, row, journey, ticket, r)
+        if comp is not None and comp.amount >= settings.min_claim_amount:
+            first = r.legs_taken[0]
+            options.append(TrainOption(
+                n=0, booked_departure=first.booked_departure, booked_arrival=r.scheduled_arrival,
+                actual_arrival=r.actual_arrival, delay_minutes=r.delay_minutes, cancelled=r.cancelled,
+                operator_code=r.responsible_operator_code, amount=comp.amount, band=comp.band,
+            ))
+    worst = max(results, key=lambda r: r.delay_minutes)
+    window = (f"{len(results)} trains between {results[0].legs_taken[0].booked_departure:%H:%M} and "
+              f"{results[-1].legs_taken[0].booked_departure:%H:%M}")
+    if not options:
+        store.update(row["id"], status=ClaimStatus.no_delay, options=[],
+                     notes=[f"Checked {window}; none qualified (worst {worst.delay_minutes} min late)."])
+        return ClaimStatus.no_delay
+    # Biggest refund first, so the list is quick to scan; you still pick the one you were on.
+    options.sort(key=lambda o: (-o.amount, -o.delay_minutes, o.booked_departure))
+    for i, o in enumerate(options, 1):
+        o.n = i
+    store.update(row["id"], status=ClaimStatus.confirm_train, options=[o.model_dump(mode="json") for o in options],
+                 amount=options[0].amount, operator=options[0].operator_code,
+                 notes=[f"Checked {window}; {len(options)} would pay. Run `confirm {row['id']} <n>` for the train you caught."])
+    return ClaimStatus.confirm_train
+
+
+def confirm_train(settings: Settings, store: Store, jid: str, n: int | None, data: TrainData, now: datetime) -> ClaimStatus:
+    """Record which train the passenger caught (None: none of the listed ones) and value that claim."""
+    row = store.journey(jid)
+    if n is None:
+        store.update(jid, status=ClaimStatus.no_delay, amount=None, notes=["You were not on any of the delayed trains."])
+        return ClaimStatus.no_delay
+    options = [TrainOption.model_validate(o) for o in json.loads(row["options"] or "[]")]
+    chosen = next((o for o in options if o.n == n), None)
+    if chosen is None:
+        raise ValueError(f"no option {n}; choose from {[o.n for o in options]}")
+    journey = Journey.model_validate_json(row["data"])
+    leg = journey.legs[0].model_copy(update={"departure": chosen.booked_departure, "arrival": chosen.booked_arrival})
+    journey = journey.model_copy(update={"legs": [leg], "confirmed_train": True, "time_is_estimate": False})
+    store.update(jid, data=journey, status=ClaimStatus.awaiting_travel, amount=None)
+    return assess(settings, store, store.journey(jid), data, now)
 
 
 def submit_one(settings: Settings, store: Store, client: anthropic.Anthropic, jid: str, dry_run: bool) -> str:
@@ -144,6 +210,11 @@ def run(settings: Settings, dry_run: bool = False, no_submit: bool = False) -> l
     added = ingest(settings, store, client, now.date())
     report = [f"Found {added} new journey(s)."]
 
+    digest: list[str] = []
+    for row in store.journeys(ClaimStatus.confirm_train):
+        if now.date() > _deadline(Journey.model_validate_json(row["data"]), settings):
+            store.update(row["id"], status=ClaimStatus.expired, notes=["Train not confirmed before the claim deadline."])
+
     data = RttClient(secret("rtt_username") or "", secret("rtt_password") or "", settings.rtt_base_url)
     for row in store.journeys(ClaimStatus.awaiting_travel):
         try:
@@ -154,11 +225,22 @@ def run(settings: Settings, dry_run: bool = False, no_submit: bool = False) -> l
             continue
         if status != ClaimStatus.awaiting_travel:
             report.append(f"{row['id']}: {status.value}")
+        if status == ClaimStatus.confirm_train:
+            fresh = store.journey(row["id"])
+            journey = Journey.model_validate_json(fresh["data"])
+            options = [TrainOption.model_validate(o) for o in json.loads(fresh["options"])]
+            digest.append(notify.confirm_request(fresh, journey, options, _deadline(journey, settings)))
 
     # Oldest first so nothing slips past its deadline.
     for row in sorted(store.journeys(ClaimStatus.eligible), key=lambda r: Journey.model_validate_json(r["data"]).travel_date):
         if no_submit or not (settings.auto_submit or dry_run):
             continue
         result = submit_one(settings, store, client, row["id"], dry_run)
-        report.append(f"{row['id']}: claim {result} (£{row['amount']:.2f} from {row['operator']})")
+        line = f"{row['id']}: claim {result} (£{row['amount']:.2f} from {row['operator']})"
+        report.append(line)
+        if result != "dry_run":
+            digest.append(line + (f"\n  {json.loads(store.journey(row['id'])['notes'])[-1]}" if result != "submitted" else ""))
+
+    if digest and notify.send(settings, f"Delay Repay: {len(digest)} update(s)", digest):
+        report.append("Emailed digest.")
     return report
