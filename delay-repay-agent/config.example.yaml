@@ -1,0 +1,64 @@
+# Copy to config.yaml and fill in. Secrets go in environment variables (see .env.example).
+
+claimant:
+  title: Mx
+  first_name: Alex
+  last_name: Example
+  email: you@example.com
+  phone: "07700 900000"
+  address_line1: 1 Example Street
+  town: Bristol
+  postcode: BS1 1AA
+
+payment:
+  # First option the claim form offers is used. Cash beats rail vouchers.
+  preference: [bank_transfer, paypal, card_refund, cheque]
+  account_name: A Example
+  paypal_email: you@example.com
+
+# Where ticket confirmation emails arrive. Only emails from rail retailers and
+# operators are read; nothing else is sent to the model.
+mailbox:
+  imap_host: imap.gmail.com
+  username: you@example.com
+  lookback_days: 30
+
+# Off: eligible claims wait for `approve <id>`. On: submitted automatically.
+# Tip: run with auto_submit off (or `run --dry-run`) for your first few claims.
+auto_submit: false
+
+# Claims based on predicted rather than recorded times wait for review.
+require_recorded_times: true
+
+# Minutes allowed to change trains when working out missed connections.
+min_connection_minutes: 5
+
+# Season tickets: only days you travel are claimed. Days listed under
+# assume_travel_on count automatically unless you log them as skipped with
+# `python -m delay_repay travelled 2026-09-22 --none`.
+seasons: []
+#  - ticket_type: season_annual      # season_weekly | season_monthly | season_annual | season_custom | flexi_season
+#    price_paid: 5400.00
+#    valid_from: "2026-01-05"
+#    valid_to: "2027-01-04"
+#    evidence_path: data/season-photocard.jpg
+#    commute:
+#      origin_crs: RDG
+#      destination_crs: PAD
+#      outbound_departure: "07:32"
+#      return_departure: "17:45"
+#      assume_travel_on: [tue, wed, thu]
+
+# Extra CRS codes to treat as London (e.g. outer-London stations you use).
+london_stations_extra: []
+
+# Override or add operators (keyed by ATOC code as reported by Realtime Trains).
+operators: {}
+#  GW:
+#    claim_url: https://www.gwr.com/help-and-support/refunds-and-compensation/delay-repay
+#    extra_domains: [example-claims-platform.co.uk]
+#    scheme: DR15
+
+model: claude-opus-5
+headless: true
+data_dir: data
