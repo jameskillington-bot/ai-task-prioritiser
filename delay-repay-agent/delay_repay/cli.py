@@ -150,6 +150,48 @@ def cmd_check_rtt(settings, args):
               f"{svc.get('atocCode') or ''} {state}")
 
 
+def cmd_setup(settings_path, args):
+    """Ask for your details and write a valid config.yaml (SWR Aldershot profile)."""
+    import yaml
+    from pathlib import Path
+
+    from .config import Settings
+
+    path = Path(settings_path)
+    if path.exists() and input(f"{path} exists. Replace it? [y/N] ").strip().lower() != "y":
+        sys.exit("Left it unchanged.")
+    base = yaml.safe_load(open(Path(__file__).parent.parent / "examples" / "swr-aldershot-waterloo.yaml"))
+
+    def ask(q, default=""):
+        a = input(f"{q}{f' [{default}]' if default else ''}: ").strip()
+        return a or default
+
+    print("Your details, as they should appear on the claim (press Enter to accept [defaults]):")
+    base["claimant"] = {
+        "first_name": ask("First name"),
+        "last_name": ask("Last name"),
+        "email": ask("Email"),
+        "phone": ask("Phone"),
+        "address_line1": ask("Address line 1 (house number and street)"),
+        "address_line2": ask("Address line 2 (optional)") or None,
+        "town": ask("Town"),
+        "postcode": ask("Postcode").upper(),
+    }
+    base["mailbox"]["username"] = ask("Gmail address for ticket emails", base["claimant"]["email"])
+    method = ask("Refund by bank transfer or PayPal? (bank/paypal)", "bank").lower()
+    if method.startswith("p"):
+        base["payment"] = {"preference": ["paypal", "bank_transfer", "card_refund", "cheque"],
+                           "paypal_email": ask("PayPal email", base["claimant"]["email"])}
+    else:
+        base["payment"] = {"preference": ["bank_transfer", "paypal", "card_refund", "cheque"],
+                           "account_name": ask("Name on bank account",
+                                               f"{base['claimant']['first_name']} {base['claimant']['last_name']}")}
+    base["headless"] = ask("Show the browser while it fills in claims? (y/n)", "y").lower().startswith("n")
+    Settings.model_validate(base)
+    path.write_text(yaml.safe_dump(base, sort_keys=False, allow_unicode=True))
+    print(f"Wrote {path}. Check it with: cat {path}")
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="delay_repay", description="Automatic Delay Repay claims for London journeys.")
     p.add_argument("-c", "--config", default="config.yaml")
@@ -208,8 +250,12 @@ def main(argv=None):
     s.add_argument("arrival", help='"YYYY-MM-DD HH:MM"')
     s.set_defaults(fn=cmd_set_arrival)
 
+    sub.add_parser("setup", help="create config.yaml by answering questions").set_defaults(fn=cmd_setup)
+
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING, format="%(levelname)s %(message)s")
+    if args.fn is cmd_setup:
+        return cmd_setup(args.config, args)
     args.fn(load(args.config), args)
 
 
