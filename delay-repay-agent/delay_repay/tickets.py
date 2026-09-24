@@ -67,7 +67,7 @@ Rules:
 - One leg per booked train. A journey with a change has several legs in order.
 - Split tickets: return one ticket per separately-priced ticket, each with only the legs it covers and its own price.
 - price_paid is what was paid for that ticket after railcard discount, excluding booking or card fees. For a return, the total return price.
-- Times are UK local time as shown. Leave arrival null if not shown.
+- Times are UK local time exactly as shown, with no timezone offset. Leave arrival null if not shown.
 - Open returns without a booked return train: return_legs is empty.
 - train_specific is true only for Advance tickets (valid on the booked train only). Anytime, Off-Peak, Super Off-Peak and season tickets are not train specific.
 - Copy values exactly; never guess a price or time that is not in the email. If the email is not a confirmed ticket purchase, set is_rail_ticket_purchase false and tickets empty."""

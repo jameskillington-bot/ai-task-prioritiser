@@ -6,8 +6,18 @@ import hashlib
 from datetime import date, datetime
 from enum import Enum
 from typing import Literal, Optional
+from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+UK = ZoneInfo("Europe/London")
+
+
+def uk_local(value: Optional[datetime]) -> Optional[datetime]:
+    """All times in this app are naive UK local time; convert any with a timezone."""
+    if value is not None and value.tzinfo is not None:
+        return value.astimezone(UK).replace(tzinfo=None)
+    return value
 
 
 class TicketType(str, Enum):
@@ -28,6 +38,8 @@ class Leg(BaseModel):
     departure: datetime = Field(description="Booked departure, local UK time")
     arrival: Optional[datetime] = Field(None, description="Booked arrival, local UK time, if shown")
     operator: Optional[str] = Field(None, description="Train company running this leg, if shown")
+
+    _local_times = field_validator("departure", "arrival")(classmethod(lambda cls, v: uk_local(v)))
 
 
 class Ticket(BaseModel):
