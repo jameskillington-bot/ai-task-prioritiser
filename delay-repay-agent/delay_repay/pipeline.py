@@ -41,6 +41,8 @@ def ingest(settings: Settings, store: Store, client: anthropic.Anthropic, today:
             continue
         try:
             tickets = extract_tickets(client, settings, msg_id, msg)
+        except anthropic.AuthenticationError:
+            raise  # a bad key fails every email the same way: stop now
         except anthropic.APIError as e:
             log.warning("Could not read %s: %s", msg_id, e)
             continue

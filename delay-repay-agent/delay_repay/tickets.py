@@ -125,7 +125,7 @@ def fetch_ticket_emails(settings: Settings, skip=lambda msg_id: False) -> list[t
         return []
     since = (date.today() - timedelta(days=mb.lookback_days)).strftime("%d-%b-%Y")
     out = []
-    with imaplib.IMAP4_SSL(mb.imap_host) as imap:
+    with imaplib.IMAP4_SSL(mb.imap_host, timeout=30) as imap:
         imap.login(mb.username, password)
         folder = mb.folder if mb.folder.startswith('"') else f'"{mb.folder}"'
         imap.select(folder, readonly=True)

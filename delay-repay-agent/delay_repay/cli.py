@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from datetime import date, datetime
 
@@ -150,6 +151,51 @@ def cmd_check_rtt(settings, args):
               f"{svc.get('atocCode') or ''} {state}")
 
 
+def cmd_check(settings, args):
+    """Test each credential and report OK or the problem, without printing secrets."""
+    import imaplib
+
+    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not key:
+        print("Anthropic key:   MISSING - add ANTHROPIC_API_KEY to .env")
+    elif not key.startswith("sk-ant-api03-"):
+        print(f"Anthropic key:   WRONG TYPE - starts {key[:12]!r}; create a Default Workspace API key")
+    else:
+        try:
+            anthropic.Anthropic().models.retrieve(settings.model)
+            print(f"Anthropic key:   OK (key ending ...{key[-4:]}, model {settings.model})")
+        except anthropic.AuthenticationError:
+            print(f"Anthropic key:   REJECTED (key ending ...{key[-4:]}) - create a new key and paste it into .env")
+        except anthropic.APIError as e:
+            print(f"Anthropic key:   PROBLEM - {e}")
+
+    mb = settings.mailbox
+    pw = secret("imap_password")
+    if not mb or not pw:
+        print("Gmail:           MISSING - mailbox in config.yaml or DELAY_REPAY_IMAP_PASSWORD in .env")
+    else:
+        try:
+            with imaplib.IMAP4_SSL(mb.imap_host, timeout=30) as imap:
+                imap.login(mb.username, pw)
+            print(f"Gmail:           OK ({mb.username})")
+        except (imaplib.IMAP4.error, OSError) as e:
+            print(f"Gmail:           FAILED - {e}")
+
+    try:
+        data = make_train_data(settings)
+        data.info() if hasattr(data, "info") else data.search("WAT", "AHT", datetime.now())
+        print("Realtime Trains: OK")
+    except Exception as e:  # report any failure rather than crash
+        print(f"Realtime Trains: FAILED - {e}")
+
+    sw_user, sw_pw = secret("sw_username"), secret("sw_password")
+    print(f"SWR login:       {'OK (' + sw_user + ')' if sw_user and sw_pw else 'MISSING - DELAY_REPAY_SECRET_SW_USERNAME/_PASSWORD in .env'}")
+    methods = settings.payment.preference
+    if methods and methods[0] == "bank_transfer":
+        ok = secret("sort_code") and secret("account_number")
+        print(f"Bank details:    {'OK' if ok else 'MISSING - DELAY_REPAY_SORT_CODE / DELAY_REPAY_ACCOUNT_NUMBER in .env'}")
+
+
 def cmd_setup(settings_path, args):
     """Ask for your details and write a valid config.yaml (SWR Aldershot profile)."""
     import yaml
@@ -196,7 +242,12 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog="delay_repay", description="Automatic Delay Repay claims for London journeys.")
     p.add_argument("-c", "--config", default="config.yaml")
     p.add_argument("-v", "--verbose", action="store_true")
+    # Also accept -v after the command, e.g. `status -v`.
+    verbose = argparse.ArgumentParser(add_help=False)
+    verbose.add_argument("-v", "--verbose", action="store_true", default=argparse.SUPPRESS)
     sub = p.add_subparsers(dest="cmd", required=True)
+    _add = sub.add_parser
+    sub.add_parser = lambda *a, **kw: _add(*a, parents=[verbose], **kw)
 
     r = sub.add_parser("run", help="scan tickets, check delays, submit eligible claims")
     r.add_argument("--dry-run", action="store_true", help="fill forms but stop before the final submit")
@@ -251,12 +302,17 @@ def main(argv=None):
     s.set_defaults(fn=cmd_set_arrival)
 
     sub.add_parser("setup", help="create config.yaml by answering questions").set_defaults(fn=cmd_setup)
+    sub.add_parser("check", help="test your keys and logins").set_defaults(fn=cmd_check)
 
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING, format="%(levelname)s %(message)s")
     if args.fn is cmd_setup:
         return cmd_setup(args.config, args)
-    args.fn(load(args.config), args)
+    try:
+        args.fn(load(args.config), args)
+    except anthropic.AuthenticationError:
+        sys.exit("The Anthropic API key was rejected. Put a valid key (starting sk-ant-api03-) "
+                 "in ANTHROPIC_API_KEY in .env.")
 
 
 if __name__ == "__main__":
