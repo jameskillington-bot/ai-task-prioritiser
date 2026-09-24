@@ -34,7 +34,7 @@ RAIL_SENDER_DOMAINS = (
     "westmidlandsrailway.co.uk", "hulltrains.co.uk", "grandcentralrail.com", "lumo.co.uk",
     "heathrowexpress.com", "tpexpress.co.uk", "northernrailway.co.uk", "tfw.wales",
     "scotrail.co.uk", "sleeper.scot", "splitmyfare.co.uk", "trainpal.com", "raileasy.co.uk",
-    "seatfrog.com", "redspottedhanky.com", "nationalrail.co.uk", "trainsplit.com",
+    "seatfrog.com", "redspottedhanky.com", "virgintrainsticketing.com", "virgin.com", "nationalrail.co.uk", "trainsplit.com",
     "greatbritishrailways.gov.uk",
 )
 
@@ -180,15 +180,37 @@ def extract_tickets(client: anthropic.Anthropic, settings: Settings, msg_id: str
     result = response.parsed_output
     if result is None or not result.is_rail_ticket_purchase:
         return []
-    evidence = str(saved[0]) if saved else None
     tickets = []
     for t in result.tickets:
         if not t.outbound_legs:
             continue
         data = t.model_dump()
         data["ticket_class"] = "first" if "first" in (t.ticket_class or "").lower() else "standard"
-        tickets.append(Ticket(**data, evidence_path=evidence, source_message_id=msg_id))
+        tickets.append(Ticket(**data, evidence_path=match_evidence(t.outbound_legs, saved), source_message_id=msg_id))
     return tickets
+
+
+def _code_pos(name: str, crs: str) -> int:
+    """Where a station appears in an e-ticket filename like 'eTicket-Passenger1-AHT-LON.pdf'."""
+    name = name.upper()
+    for code in (crs.upper(), "LON") if is_london(crs) else (crs.upper(),):
+        i = name.find(code)
+        if i >= 0:
+            return i
+    return -1
+
+
+def match_evidence(legs: list[Leg], files: list[Path]) -> Optional[str]:
+    """Pick the e-ticket PDF for this part of a split ticket, so the return
+    claim uploads the return ticket rather than the outward one."""
+    if not files:
+        return None
+    origin, dest = legs[0].origin_crs, legs[-1].destination_crs
+    for f in files:
+        o, d = _code_pos(f.name, origin), _code_pos(f.name, dest)
+        if 0 <= o < d:
+            return str(f)
+    return str(files[0])
 
 
 def involves_london(ticket: Ticket, extra: frozenset[str]) -> bool:

@@ -114,3 +114,19 @@ def test_digest_email(tmp_path, monkeypatch):
     host, user, msg = sent
     assert host == "smtp.gmail.com" and user == "me@gmail.com" and msg["To"] == "me@gmail.com"
     assert "Only confirm a train you were actually on." in msg.get_content()
+
+
+def test_split_ticket_uploads_matching_pdf(tmp_path):
+    from delay_repay.tickets import match_evidence
+    out_pdf, back_pdf = tmp_path / "eTicket-Passenger1-AHT-LON.pdf", tmp_path / "eTicket-Passenger1-LON-AHT.pdf"
+    files = [out_pdf, back_pdf]
+    at = lambda h: datetime(2026, 9, 23, h)
+    assert match_evidence([Leg(origin_crs="AHT", destination_crs="WAT", departure=at(7))], files) == str(out_pdf)
+    assert match_evidence([Leg(origin_crs="WAT", destination_crs="AHT", departure=at(17))], files) == str(back_pdf)
+    assert match_evidence([Leg(origin_crs="BRI", destination_crs="BTH", departure=at(9))], files) == str(out_pdf)
+
+
+def test_virgin_trains_ticketing_is_a_rail_sender():
+    from delay_repay.tickets import RAIL_SENDER_DOMAINS
+    domain = "comms.virgintrainsticketing.com"
+    assert any(domain == d or domain.endswith("." + d) for d in RAIL_SENDER_DOMAINS)

@@ -30,7 +30,7 @@ _OPERATORS = [
     Operator("TL", "Thameslink", "DR15", "https://www.thameslinkrailway.com/help-and-support/delay-repay", ("thameslinkrailway.com",)),
     Operator("GN", "Great Northern", "DR15", "https://www.greatnorthernrail.com/help-and-support/delay-repay", ("greatnorthernrail.com",)),
     Operator("GX", "Gatwick Express", "DR15", "https://www.gatwickexpress.com/help-and-support/delay-repay", ("gatwickexpress.com",)),
-    Operator("SW", "South Western Railway", "DR15", "https://www.southwesternrailway.com/contact-and-help/delay-repay", ("southwesternrailway.com",)),
+    Operator("SW", "South Western Railway", "DR15", "https://delayrepay.southwesternrailway.com/en/login?loginTarget=%2F", ("southwesternrailway.com",)),
     Operator("LE", "Greater Anglia", "DR15", "https://www.greateranglia.co.uk/about-us/our-performance/delay-repay", ("greateranglia.co.uk",)),
     Operator("CC", "c2c", "DR15", "https://www.c2c-online.co.uk/help-feedback/delay-repay/", ("c2c-online.co.uk",)),
     Operator("CH", "Chiltern Railways", "DR15", "https://www.chilternrailways.co.uk/delay-repay", ("chilternrailways.co.uk",)),
