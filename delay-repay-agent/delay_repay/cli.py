@@ -16,6 +16,7 @@ from .config import load, secret
 from .models import ClaimStatus, Journey, Leg, Ticket, TicketType, TrainOption
 from .notify import confirm_request
 from .rtt import make_train_data
+from .rtt_nextgen import RttRateLimited
 from .tickets import journeys_for
 
 
@@ -149,6 +150,21 @@ def cmd_check_rtt(settings, args):
         print(f"  {o.get('gbttBookedDeparture', '----')} dep  -> due {d.get('gbttBookedArrival', '----')}, "
               f"arr {d.get('realtimeArrival', '----')}{' (actual)' if d.get('realtimeArrivalActual') else ''}  "
               f"{svc.get('atocCode') or ''} {state}")
+
+
+def cmd_recheck(settings, args):
+    """Check journeys again on the next run (e.g. after a fix). Submitted and confirmed ones are left alone."""
+    store = pipeline.open_store(settings)
+    redo = (ClaimStatus.no_delay, ClaimStatus.below_threshold, ClaimStatus.confirm_train, ClaimStatus.needs_review)
+    n = 0
+    for r in store.journeys(*redo):
+        if args.journey_id and r["id"] != args.journey_id:
+            continue
+        if Journey.model_validate_json(r["data"]).confirmed_train:
+            continue
+        store.update(r["id"], status=ClaimStatus.awaiting_travel, options=[], amount=None, notes=[])
+        n += 1
+    print(f"{n} journey(s) will be checked again on the next `run`.")
 
 
 def cmd_check(settings, args):
@@ -303,6 +319,9 @@ def main(argv=None):
 
     sub.add_parser("setup", help="create config.yaml by answering questions").set_defaults(fn=cmd_setup)
     sub.add_parser("check", help="test your keys and logins").set_defaults(fn=cmd_check)
+    rc = sub.add_parser("recheck", help="check journeys again on the next run")
+    rc.add_argument("journey_id", nargs="?", help="just this journey (default: all unclaimed)")
+    rc.set_defaults(fn=cmd_recheck)
 
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING, format="%(levelname)s %(message)s")
@@ -310,6 +329,8 @@ def main(argv=None):
         return cmd_setup(args.config, args)
     try:
         args.fn(load(args.config), args)
+    except RttRateLimited:
+        sys.exit("Realtime Trains request allowance used up for now (100 an hour). Wait an hour and run it again.")
     except anthropic.AuthenticationError:
         sys.exit("The Anthropic API key was rejected. Put a valid key (starting sk-ant-api03-) "
                  "in ANTHROPIC_API_KEY in .env.")

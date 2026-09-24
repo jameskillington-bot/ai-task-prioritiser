@@ -132,9 +132,9 @@ def test_virgin_trains_ticketing_is_a_rail_sender():
     assert any(domain == d or domain.endswith("." + d) for d in RAIL_SENDER_DOMAINS)
 
 
-def test_ticket_times_with_timezone_become_uk_local():
-    # Claude may return "07:34+01:00" or UTC; everything is compared as naive UK time.
-    a = Leg(origin_crs="AHT", destination_crs="WAT", departure="2026-09-23T07:34:00+01:00", arrival="2026-09-23T07:22:00Z")
+def test_ticket_times_keep_the_printed_clock_time():
+    # Claude may tag the printed time with "+01:00" or a spurious "Z"; the clock time is what counts.
+    a = Leg(origin_crs="AHT", destination_crs="WAT", departure="2026-09-23T07:34:00+01:00", arrival="2026-09-23T08:22:00Z")
     assert a.departure == datetime(2026, 9, 23, 7, 34) and a.departure.tzinfo is None
     assert a.arrival == datetime(2026, 9, 23, 8, 22)
     j = journeys_for(Ticket(booking_reference="X", ticket_type=TicketType.single, price_paid=1, outbound_legs=[a]))[0]

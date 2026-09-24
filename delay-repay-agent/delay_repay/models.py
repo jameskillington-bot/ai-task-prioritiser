@@ -14,9 +14,11 @@ UK = ZoneInfo("Europe/London")
 
 
 def uk_local(value: Optional[datetime]) -> Optional[datetime]:
-    """All times in this app are naive UK local time; convert any with a timezone."""
+    """Ticket times are the UK wall-clock times printed on the ticket. A model
+    sometimes tags them with an offset (often a spurious "Z"), so keep the
+    clock time and drop the offset rather than converting it."""
     if value is not None and value.tzinfo is not None:
-        return value.astimezone(UK).replace(tzinfo=None)
+        return value.replace(tzinfo=None)
     return value
 
 
