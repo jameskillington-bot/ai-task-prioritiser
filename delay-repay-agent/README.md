@@ -55,7 +55,7 @@ cp .env.example .env                 # API keys, RTT login, mailbox app password
 
 You need:
 - an Anthropic API key (`ANTHROPIC_API_KEY`);
-- a free Realtime Trains API account (`RTT_USERNAME`, `RTT_PASSWORD`);
+- a Realtime Trains API token from [api-portal.rtt.io](https://api-portal.rtt.io) (`RTT_TOKEN`). Check it with `./run.sh check-rtt`. The legacy `RTT_USERNAME`/`RTT_PASSWORD` still works;
 - an IMAP app password for the mailbox your e-tickets go to. For Gmail, create one under Google Account → Security → App passwords.
 - your bank details in `.env` if you want bank-transfer payouts. The browser types them straight into the form. The model never sees them, and they are removed from any page text before it reaches the model.
 

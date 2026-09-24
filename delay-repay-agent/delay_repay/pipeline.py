@@ -12,7 +12,7 @@ from . import compensation, notify, submitter
 from .config import Settings, secret
 from .models import ClaimStatus, Compensation, DelayResult, Journey, Ticket, TrainOption
 from .operators import get_operator
-from .rtt import RttClient, TrainData, analyse_journey, analyse_window
+from .rtt import TrainData, analyse_journey, analyse_window, make_train_data
 from .store import Store
 from .tickets import extract_tickets, fetch_ticket_emails, involves_london, journeys_for, season_journeys
 
@@ -215,7 +215,7 @@ def run(settings: Settings, dry_run: bool = False, no_submit: bool = False) -> l
         if now.date() > _deadline(Journey.model_validate_json(row["data"]), settings):
             store.update(row["id"], status=ClaimStatus.expired, notes=["Train not confirmed before the claim deadline."])
 
-    data = RttClient(secret("rtt_username") or "", secret("rtt_password") or "", settings.rtt_base_url)
+    data = make_train_data(settings)
     for row in store.journeys(ClaimStatus.awaiting_travel):
         try:
             status = assess(settings, store, row, data, now)

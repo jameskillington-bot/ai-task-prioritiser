@@ -54,6 +54,17 @@ class RttClient:
         return self._get(f"/json/service/{uid}/{y}/{m}/{d}")
 
 
+def make_train_data(settings) -> "TrainData":
+    """Next-generation API if RTT_TOKEN is set, otherwise the legacy API."""
+    from .config import secret
+    from .rtt_nextgen import RttNextGenClient
+
+    token = secret("rtt_token")
+    if token:
+        return RttNextGenClient(token, settings.rtt_nextgen_url)
+    return RttClient(secret("rtt_username") or "", secret("rtt_password") or "", settings.rtt_base_url)
+
+
 def _time(run_date: str, hhmm: str | None, next_day: bool = False) -> datetime | None:
     if not hhmm:
         return None
@@ -81,14 +92,14 @@ class _Candidate:
         self.operator_name = svc.get("atocName")
         oi, o = _call(detail, leg.origin_crs)
         di, d = _call(detail, leg.destination_crs, after_index=oi if oi is not None else -1)
-        self.valid = o is not None and d is not None and not _is_cancelled(o) and not _is_cancelled(d)
+        self.origin_cancelled = o is not None and (_is_cancelled(o) or bool(o.get("departureCancelled")))
+        self.destination_cancelled = d is not None and (_is_cancelled(d) or bool(d.get("arrivalCancelled")))
+        self.valid = o is not None and d is not None and not self.origin_cancelled and not self.destination_cancelled
         self.booked_departure = _time(self.run_date, o and o.get("gbttBookedDeparture"), bool(o and o.get("gbttBookedDepartureNextDay")))
         self.actual_departure = _time(self.run_date, o and o.get("realtimeDeparture"), bool(o and o.get("realtimeDepartureNextDay"))) or self.booked_departure
         self.booked_arrival = _time(self.run_date, d and d.get("gbttBookedArrival"), bool(d and d.get("gbttBookedArrivalNextDay")))
         self.actual_arrival = _time(self.run_date, d and d.get("realtimeArrival"), bool(d and d.get("realtimeArrivalNextDay")))
         self.arrival_is_actual = bool(d and d.get("realtimeArrivalActual"))
-        self.origin_cancelled = o is not None and _is_cancelled(o)
-        self.destination_cancelled = d is not None and _is_cancelled(d)
         if self.actual_arrival is None and self.valid:
             # No realtime report at the destination: fall back to booked time.
             self.actual_arrival = self.booked_arrival

@@ -94,7 +94,8 @@ class Settings(BaseModel):
     headless: bool = True
     chromium_path: Optional[str] = None  # only if Playwright's bundled browser isn't installed
     data_dir: str = "data"
-    rtt_base_url: str = "https://api.rtt.io/api/v1"
+    rtt_base_url: str = "https://api.rtt.io/api/v1"  # legacy API (RTT_USERNAME/RTT_PASSWORD)
+    rtt_nextgen_url: str = "https://data.rtt.io"     # next-gen API (RTT_TOKEN)
 
     @property
     def data_path(self) -> Path:
@@ -104,6 +105,7 @@ class Settings(BaseModel):
 
 
 SECRET_ENV = {
+    "rtt_token": "RTT_TOKEN",
     "rtt_username": "RTT_USERNAME",
     "rtt_password": "RTT_PASSWORD",
     "imap_password": "DELAY_REPAY_IMAP_PASSWORD",

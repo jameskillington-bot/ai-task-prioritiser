@@ -14,7 +14,7 @@ from . import pipeline
 from .config import load, secret
 from .models import ClaimStatus, Journey, Leg, Ticket, TicketType, TrainOption
 from .notify import confirm_request
-from .rtt import RttClient
+from .rtt import make_train_data
 from .tickets import journeys_for
 
 
@@ -76,7 +76,7 @@ def cmd_confirm(settings, args):
         sys.exit("That journey is not waiting for a train confirmation (see `status`).")
     if (args.number is None) == (not args.none):
         sys.exit("Give the option number of the train you caught, or --none.")
-    data = RttClient(secret("rtt_username") or "", secret("rtt_password") or "", settings.rtt_base_url)
+    data = make_train_data(settings)
     try:
         status = pipeline.confirm_train(settings, store, args.journey_id, None if args.none else args.number, data, datetime.now())
     except ValueError as e:
@@ -124,8 +124,30 @@ def cmd_set_arrival(settings, args):
     if store.journey(args.journey_id) is None:
         sys.exit("Unknown journey id.")
     store.update(args.journey_id, arrival_override=_dt(args.arrival).isoformat(), status=ClaimStatus.awaiting_travel)
-    data = RttClient(secret("rtt_username") or "", secret("rtt_password") or "", settings.rtt_base_url)
+    data = make_train_data(settings)
     print(pipeline.assess(settings, store, store.journey(args.journey_id), data, datetime.now()).value)
+
+
+def cmd_check_rtt(settings, args):
+    """Check the Realtime Trains token and show one line-up, e.g. Waterloo -> Aldershot."""
+    data = make_train_data(settings)
+    if hasattr(data, "info"):
+        info = data.info()
+        creds = info.get("credentials") or {}
+        print(f"API version {info.get('api_version')}; history limit "
+              f"{creds.get('historyRestrictToDays') if creds.get('historyRestriction') else 'none'} days")
+    when = _dt(args.when) if args.when else datetime.now()
+    services = data.search(args.origin.upper(), args.destination.upper(), when)
+    print(f"{len(services)} service(s) {args.origin.upper()} -> {args.destination.upper()} from {when:%Y-%m-%d %H:%M}")
+    for svc in services[:8]:
+        detail = data.service(svc["serviceUid"], svc["runDate"])
+        calls = {l["crs"]: l for l in detail.get("locations", [])}
+        o, d = calls.get(args.origin.upper(), {}), calls.get(args.destination.upper(), {})
+        state = "CANCELLED" if o.get("displayAs") == "CANCELLED_CALL" or o.get("departureCancelled") \
+            or d.get("displayAs") == "CANCELLED_CALL" or d.get("arrivalCancelled") else ""
+        print(f"  {o.get('gbttBookedDeparture', '----')} dep  -> due {d.get('gbttBookedArrival', '----')}, "
+              f"arr {d.get('realtimeArrival', '----')}{' (actual)' if d.get('realtimeArrivalActual') else ''}  "
+              f"{svc.get('atocCode') or ''} {state}")
 
 
 def main(argv=None):
@@ -167,6 +189,12 @@ def main(argv=None):
     cf.add_argument("number", nargs="?", type=int, help="option number from `status` or the email")
     cf.add_argument("--none", action="store_true", help="you weren't on any of the listed trains")
     cf.set_defaults(fn=cmd_confirm)
+
+    ck = sub.add_parser("check-rtt", help="test your Realtime Trains token")
+    ck.add_argument("--from", dest="origin", default="WAT")
+    ck.add_argument("--to", dest="destination", default="AHT")
+    ck.add_argument("--when", help='"YYYY-MM-DD HH:MM" (default: now)')
+    ck.set_defaults(fn=cmd_check_rtt)
 
     tr = sub.add_parser("travelled", help="log a season-ticket travel day")
     tr.add_argument("date", nargs="?")
