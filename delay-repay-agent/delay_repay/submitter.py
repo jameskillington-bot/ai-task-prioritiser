@@ -341,10 +341,11 @@ def submit(
     delay: DelayResult,
     comp: Compensation,
     dry_run: bool = False,
+    claim_id: str | None = None,
 ) -> Outcome:
     from playwright.sync_api import sync_playwright
 
-    out_dir = settings.data_path / "claims" / journey.journey_id()
+    out_dir = settings.data_path / "claims" / (claim_id or journey.journey_id())
     out_dir.mkdir(parents=True, exist_ok=True)
     data = claim_data(settings, ticket, journey, delay, comp, operator)
     (out_dir / "claim.json").write_text(json.dumps(data, indent=2))

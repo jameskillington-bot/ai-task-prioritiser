@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import date, datetime, timedelta
 
 import anthropic
@@ -196,7 +197,7 @@ def submit_one(settings: Settings, store: Store, client: anthropic.Anthropic, ji
     if date.today() > _deadline(journey, settings):
         store.update(jid, status=ClaimStatus.expired)
         return "expired"
-    outcome = submitter.submit(client, settings, operator, ticket, journey, delay, comp, dry_run=dry_run)
+    outcome = submitter.submit(client, settings, operator, ticket, journey, delay, comp, dry_run=dry_run, claim_id=jid)
     notes = json.loads(row["notes"] or "[]") + [f"{datetime.now():%Y-%m-%d %H:%M} {outcome.status}: {outcome.message}"]
     status = {"submitted": ClaimStatus.submitted, "needs_human": ClaimStatus.needs_human}.get(outcome.status)
     if outcome.status == "dry_run":
@@ -206,7 +207,9 @@ def submit_one(settings: Settings, store: Store, client: anthropic.Anthropic, ji
     return outcome.status
 
 
-def run(settings: Settings, dry_run: bool = False, no_submit: bool = False) -> list[str]:
+def run(settings: Settings, dry_run: bool = False, no_submit: bool = False, wait_for_allowance: bool = False) -> list[str]:
+    """One full pass. With wait_for_allowance (scheduled runs), a Realtime Trains
+    rate limit pauses for an hour and carries on, up to 6 times."""
     store = open_store(settings)
     client = anthropic.Anthropic()
     now = datetime.now()
@@ -219,16 +222,26 @@ def run(settings: Settings, dry_run: bool = False, no_submit: bool = False) -> l
             store.update(row["id"], status=ClaimStatus.expired, notes=["Train not confirmed before the claim deadline."])
 
     data = make_train_data(settings)
-    for row in store.journeys(ClaimStatus.awaiting_travel):
+    rows, i, waits = store.journeys(ClaimStatus.awaiting_travel), 0, 0
+    while i < len(rows):
+        row = rows[i]
         try:
             status = assess(settings, store, row, data, now)
         except RttRateLimited as e:
+            if wait_for_allowance and waits < 6:
+                waits += 1
+                log.warning("Realtime Trains allowance used up; waiting an hour (%d/6).", waits)
+                time.sleep(3660)
+                data, now = make_train_data(settings), datetime.now()
+                continue  # retry the same journey
             report.append(str(e))
             break
         except (LookupError, OSError) as e:
             store.update(row["id"], notes=[f"Delay check failed: {e}"])
             log.warning("Delay check failed for %s: %s", row["id"], e)
+            i += 1
             continue
+        i += 1
         if status != ClaimStatus.awaiting_travel:
             report.append(f"{row['id']}: {status.value}")
         if status == ClaimStatus.confirm_train:
@@ -249,4 +262,5 @@ def run(settings: Settings, dry_run: bool = False, no_submit: bool = False) -> l
 
     if digest and notify.send(settings, f"Delay Repay: {len(digest)} update(s)", digest):
         report.append("Emailed digest.")
+    (settings.data_path / "last_run").write_text(datetime.now().strftime("%a %d %b %H:%M"))
     return report

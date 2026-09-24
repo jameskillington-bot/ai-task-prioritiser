@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delay Repay</title>
+<style>
+  :root {
+    --bg: #f5f5f7; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7;
+    --accent: #0a66d8; --accent-text: #ffffff; --good: #1a7f37; --warn: #9a6700; --bad: #c9372c;
+    --good-bg: #e8f5ec; --warn-bg: #fff6e0; --bad-bg: #fdecea; --chip: #f0f0f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111113; --card: #1c1c1f; --text: #f5f5f7; --muted: #a1a1a6; --line: #38383d;
+      --accent: #3d8bfd; --accent-text: #ffffff; --good: #4ac26b; --warn: #e3b341; --bad: #ff6b5e;
+      --good-bg: #13291b; --warn-bg: #2d2412; --bad-bg: #2f1614; --chip: #2a2a2e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+         -webkit-font-smoothing: antialiased; }
+  main { max-width: 760px; margin: 0 auto; padding: 28px 16px 64px; }
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 26px; margin: 0; letter-spacing: -0.4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .total { text-align: right; }
+  .total b { display: block; font-size: 26px; letter-spacing: -0.4px; color: var(--good); font-variant-numeric: tabular-nums; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--muted); margin: 28px 0 10px; font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 12px; }
+  .card h3 { margin: 0; font-size: 17px; letter-spacing: -0.2px; }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .amount { font-size: 28px; font-weight: 600; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; }
+  .chip { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); }
+  .chip.bad { background: var(--bad-bg); color: var(--bad); }
+  .chip.good { background: var(--good-bg); color: var(--good); }
+  .ask { margin: 14px 0 8px; font-weight: 600; }
+  .hint { color: var(--muted); font-size: 13px; }
+  .opt { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 10px 12px;
+         border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; cursor: pointer; }
+  .opt:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .opt .t { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .opt .d { color: var(--muted); font-size: 13px; }
+  .opt .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  input[type=time] { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  button { font: inherit; font-weight: 600; border-radius: 10px; padding: 9px 16px; cursor: pointer; border: 1px solid var(--line);
+           background: var(--card); color: var(--text); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .notice { padding: 10px 12px; border-radius: 10px; font-size: 14px; margin-top: 12px; }
+  .notice.warn { background: var(--warn-bg); color: var(--warn); }
+  .notice.bad { background: var(--bad-bg); color: var(--bad); }
+  .notice.good { background: var(--good-bg); color: var(--good); }
+  .shot { display: block; margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; max-height: 320px; }
+  .shot img { width: 100%; display: block; }
+  ul.notes { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+  .list .item { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .list .item:first-child { border-top: 0; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+  #job { position: sticky; top: 0; z-index: 5; margin-bottom: 12px; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent;
+          border-radius: 50%; animation: s 0.8s linear infinite; vertical-align: -1px; margin-right: 6px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  .empty { color: var(--muted); text-align: center; padding: 26px 0; }
+  @media (max-width: 520px) { .opt { grid-template-columns: auto 1fr; } .opt .v { grid-column: 2; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Delay Repay</h1>
+      <div class="sub" id="lastChecked"></div>
+    </div>
+    <div class="total"><span class="sub">Claimed back</span><b id="total">£0.00</b></div>
+  </header>
+  <div id="job"></div>
+  <div class="actions" style="margin-top:0"><button id="checkNow">Check emails and trains now</button></div>
+  <div id="content"><p class="empty">Loading…</p></div>
+</main>
+<script>
+const TOKEN = new URLSearchParams(location.search).get("t") || "";
+const $ = (sel) => document.querySelector(sel);
+let busy = false;
+
+// Build DOM without innerHTML: text from notes and websites is never treated as HTML.
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === false || v == null) continue;
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "class") el.className = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid.nodeType ? kid : String(kid));
+  return el;
+}
+
+async function api(path, body) {
+  const opts = { headers: { "X-Token": TOKEN } };
+  if (body) Object.assign(opts, { method: "POST", body: JSON.stringify(body), headers: { "X-Token": TOKEN, "Content-Type": "application/json" } });
+  const r = await fetch(path, opts);
+  return r.json().catch(() => ({ ok: false, message: `HTTP ${r.status}` }));
+}
+
+const money = (n) => "£" + Number(n || 0).toFixed(2);
+const day = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+const title = (j) => `${day(j.date)} · ${j.origin} → ${j.destination}`;
+
+async function act(path, body) {
+  const r = await api(path, body);
+  if (!r.ok) showJob({ last: { ok: false, message: r.message } });
+  refresh();
+}
+
+function showJob(jobs) {
+  const box = $("#job");
+  box.replaceChildren();
+  if (jobs.current) {
+    box.append(h("div", { class: "notice warn" }, h("span", { class: "spin" }), jobs.current.label + "… this can take a few minutes."));
+  } else if (jobs.last && Date.now() / 1000 - (jobs.last.finished || Date.now() / 1000) < 600) {
+    box.append(h("div", { class: "notice " + (jobs.last.ok ? "good" : "bad") }, jobs.last.message));
+  }
+  busy = !!jobs.current;
+  document.querySelectorAll("button").forEach((b) => { if (!b.dataset.keep) b.disabled = busy || b.dataset.off === "1"; });
+}
+
+function confirmCard(j) {
+  const name = "pick-" + j.id;
+  const time = h("input", { type: "time" });
+  const options = j.options.map((o) =>
+    h("label", { class: "opt" },
+      h("input", { type: "radio", name, value: o.n }),
+      h("div", {},
+        h("div", { class: "t" }, o.booked_departure.slice(11, 16), o.cancelled ? h("span", { class: "chip bad", style: "margin-left:8px" }, "cancelled") : ""),
+        h("div", { class: "d" }, `due ${o.booked_arrival.slice(11, 16)} · got in ${o.actual_arrival.slice(11, 16)} if you took the next train · ${o.delay_minutes} min late`)),
+      h("div", { class: "v" }, money(o.amount))));
+  return h("div", { class: "card" },
+    h("div", { class: "row" }, h("h3", {}, title(j)), h("span", { class: "chip warn" }, "Which train?")),
+    h("div", { class: "meta" }, `Claim by ${day(j.deadline)} (${j.days_left} days left)`),
+    h("div", { class: "ask" }, "Which train were you on?"),
+    h("div", { class: "hint", style: "margin-bottom:8px" }, "Delay Repay pays for the train you actually caught, so only pick that one."),
+    options,
+    h("div", { class: "field" }, h("span", {}, "Got there a different way? Arrival time:"), time),
+    h("div", { class: "hint" }, "Amounts above assume you waited for the next direct train. If you went another way (e.g. via Guildford), enter when you actually arrived and the refund is worked out from that."),
+    h("div", { class: "actions" },
+      h("button", { class: "primary", onclick: () => {
+        const picked = document.querySelector(`input[name="${name}"]:checked`);
+        if (!picked) return showJob({ last: { ok: false, message: "Pick the train you were on first." } });
+        act("/api/confirm", { id: j.id, n: Number(picked.value), arrival: time.value || null });
+      } }, "Confirm train"),
+      h("button", { onclick: () => act("/api/confirm", { id: j.id, n: null }) }, "I wasn't on any of these")));
+}
+
+function claimCard(j) {
+  const time = h("input", { type: "time", value: j.arrival_override ? j.arrival_override.slice(11, 16) : "" });
+  const review = j.status === "needs_review";
+  const problem = j.status === "needs_human" || j.status === "failed";
+  const lastNote = j.notes[j.notes.length - 1];
+  return h("div", { class: "card" },
+    h("div", { class: "row" }, h("h3", {}, title(j)), h("div", { class: "amount" }, money(j.amount))),
+    h("div", { class: "meta" }, `${j.departure} train · due ${j.scheduled_arrival}, arrived ${j.actual_arrival}`,
+      j.arrival_override ? " (your time)" : "", ` · ${j.delay_minutes} min late · ${j.band}`),
+    h("div", { class: "meta" }, `${j.basis} · claim by ${day(j.deadline)} (${j.days_left} days left)`),
+    review ? h("div", { class: "notice warn" }, "Realtime Trains only has predicted times for this one. Check the arrival time is right before claiming.") : "",
+    problem ? h("div", { class: "notice bad" }, lastNote || "The last attempt didn't finish.") : "",
+    h("div", { class: "field" }, h("span", {}, "Arrival time:"), time,
+      h("button", { onclick: () => time.value && act("/api/arrival", { id: j.id, arrival: time.value }) }, "Update")),
+    j.preview_shot ? h("a", { class: "shot", href: `/shots/${j.preview_shot}?t=${TOKEN}`, target: "_blank" },
+      h("img", { src: `/shots/${j.preview_shot}?t=${TOKEN}`, alt: "Filled-in claim form before submitting" })) : "",
+    h("div", { class: "actions" },
+      h("button", { onclick: () => act("/api/preview", { id: j.id }) }, j.preview_shot ? "Preview again" : "Preview claim"),
+      h("button", { class: "primary", "data-off": j.preview_shot ? "0" : "1",
+        onclick: () => confirm(`Submit a ${money(j.amount)} claim to South Western Railway for the ${j.departure} on ${day(j.date)}?`) && act("/api/submit", { id: j.id }) },
+        "Submit claim")),
+    j.preview_shot ? h("div", { class: "hint", style: "margin-top:8px" }, "Check the preview above matches your journey, then submit.")
+                   : h("div", { class: "hint", style: "margin-top:8px" }, "Preview first: it fills in SWR's form and stops before sending."));
+}
+
+function listSection(label, items, line, open) {
+  if (!items.length) return [];
+  const body = h("div", { class: "card list" }, items.map(line));
+  return [h("details", open ? { open: true } : {}, h("summary", {}, `${label} (${items.length})`), body)];
+}
+
+function render(data) {
+  $("#total").textContent = money(data.claimed_total);
+  $("#lastChecked").textContent = data.last_checked ? `Last checked ${data.last_checked} · runs every Monday at 10:00` : "Runs every Monday at 10:00";
+  const js = data.journeys;
+  const need = js.filter((j) => j.needs_you);
+  const content = [];
+  content.push(h("h2", {}, "Needs you"));
+  content.push(need.length ? need.map((j) => j.status === "confirm_train" ? confirmCard(j) : claimCard(j))
+                           : h("div", { class: "card empty" }, "Nothing to do. Delayed journeys will appear here."));
+  const claimed = js.filter((j) => j.status === "submitted");
+  if (claimed.length) {
+    content.push(h("h2", {}, "Claimed"));
+    content.push(h("div", { class: "card list" }, claimed.map((j) =>
+      h("div", { class: "item" }, h("span", {}, title(j)),
+        h("span", {}, money(j.amount), j.claim_reference ? h("span", { class: "chip good", style: "margin-left:8px" }, j.claim_reference) : "")))));
+  }
+  content.push(h("h2", {}, "History"));
+  content.push(...listSection("Checked, nothing to claim", js.filter((j) => ["no_delay", "below_threshold"].includes(j.status)),
+    (j) => h("div", { class: "item" }, h("span", {}, title(j)), h("span", { class: "hint" }, j.notes[0] || "On time"))));
+  content.push(...listSection("Waiting to be checked", js.filter((j) => j.status === "awaiting_travel"),
+    (j) => h("div", { class: "item" }, h("span", {}, title(j)), h("span", { class: "hint" }, j.notes[0] || "Next run"))));
+  content.push(...listSection("Expired", js.filter((j) => j.status === "expired"),
+    (j) => h("div", { class: "item" }, h("span", {}, title(j)), h("span", { class: "hint" }, "Past the 28-day deadline"))));
+  $("#content").replaceChildren(...content.flat());
+  showJob(data.jobs);
+}
+
+async function refresh() {
+  const data = await api("/api/summary");
+  if (data.journeys) render(data);
+  clearTimeout(refresh.t);
+  refresh.t = setTimeout(refresh, busy ? 3000 : 30000);
+}
+
+$("#checkNow").addEventListener("click", () => act("/api/check", {}));
+refresh();
+</script>
+</body>
+</html>

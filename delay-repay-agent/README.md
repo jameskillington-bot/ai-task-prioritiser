@@ -59,6 +59,25 @@ You need:
 - an IMAP app password for the mailbox your e-tickets go to. For Gmail, create one under Google Account → Security → App passwords.
 - your bank details in `.env` if you want bank-transfer payouts. The browser types them straight into the form. The model never sees them, and they are removed from any page text before it reaches the model.
 
+## Everyday use: the Delay Repay page and weekly run (macOS)
+
+```bash
+./run.sh install            # every Monday at 10:00 (change with --day / --time) + Delay Repay app
+./run.sh ui                 # or double-click Delay Repay in ~/Applications
+```
+
+Every Monday at 10:00 the agent reads the week's ticket emails and checks each journey. If the
+Realtime Trains hourly allowance runs out, it waits an hour and carries on. If anything needs you,
+a pop-up offers to open the Delay Repay page, where you:
+
+1. pick the train you were actually on (and, if you went another way, when you arrived);
+2. **Preview claim**: the agent fills in the operator's form and stops before sending, showing a screenshot;
+3. **Submit claim** once the preview looks right. The claim reference appears on the page.
+
+The page runs only on your Mac (127.0.0.1), needs a private token, and stops after two idle hours.
+The job needs the Mac to be on; if it was asleep at 10:00 it runs when it wakes. Log:
+`data/schedule.log`. Remove everything with `./run.sh uninstall`.
+
 ## Use
 
 ```bash

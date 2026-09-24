@@ -152,6 +152,36 @@ def cmd_check_rtt(settings, args):
               f"{svc.get('atocCode') or ''} {state}")
 
 
+def cmd_ui(settings, args):
+    """Open the Delay Repay page in your browser."""
+    from . import ui
+    ui.serve(settings, open_browser=not args.no_browser)
+
+
+def cmd_scheduled(settings, args):
+    """The weekly background run: check everything, then ask for help if needed."""
+    from . import schedule
+    from .ui import NEEDS_YOU
+    print(f"--- {datetime.now():%Y-%m-%d %H:%M} scheduled run")
+    for line in pipeline.run(settings, no_submit=not settings.auto_submit, wait_for_allowance=True):
+        print(line)
+    rows = [r for r in pipeline.open_store(settings).journeys(*NEEDS_YOU)]
+    schedule.notify(len(rows), sum(r["amount"] or 0 for r in rows))
+
+
+def cmd_install(settings, args):
+    """Schedule the weekly run and add the Delay Repay app (macOS)."""
+    from . import schedule
+    for line in schedule.install(args.day, args.time):
+        print(line)
+
+
+def cmd_uninstall(settings, args):
+    from . import schedule
+    for line in schedule.uninstall():
+        print(line)
+
+
 def cmd_recheck(settings, args):
     """Check journeys again on the next run (e.g. after a fix). Submitted and confirmed ones are left alone."""
     store = pipeline.open_store(settings)
@@ -319,6 +349,15 @@ def main(argv=None):
 
     sub.add_parser("setup", help="create config.yaml by answering questions").set_defaults(fn=cmd_setup)
     sub.add_parser("check", help="test your keys and logins").set_defaults(fn=cmd_check)
+    u = sub.add_parser("ui", help="open the Delay Repay page")
+    u.add_argument("--no-browser", action="store_true")
+    u.set_defaults(fn=cmd_ui)
+    sub.add_parser("scheduled", help="the weekly background run (used by the schedule)").set_defaults(fn=cmd_scheduled)
+    ins = sub.add_parser("install", help="run every week and add the Delay Repay app (macOS)")
+    ins.add_argument("--day", default="monday", choices=["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"])
+    ins.add_argument("--time", default="10:00", help="HH:MM, default 10:00")
+    ins.set_defaults(fn=cmd_install)
+    sub.add_parser("uninstall", help="remove the weekly run and the app").set_defaults(fn=cmd_uninstall)
     rc = sub.add_parser("recheck", help="check journeys again on the next run")
     rc.add_argument("journey_id", nargs="?", help="just this journey (default: all unclaimed)")
     rc.set_defaults(fn=cmd_recheck)
