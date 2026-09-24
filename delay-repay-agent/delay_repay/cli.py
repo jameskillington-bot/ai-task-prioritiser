@@ -139,7 +139,7 @@ def cmd_check_rtt(settings, args):
     when = _dt(args.when) if args.when else datetime.now()
     services = data.search(args.origin.upper(), args.destination.upper(), when)
     print(f"{len(services)} service(s) {args.origin.upper()} -> {args.destination.upper()} from {when:%Y-%m-%d %H:%M}")
-    for svc in services[:8]:
+    for svc in services[:4]:
         detail = data.service(svc["serviceUid"], svc["runDate"])
         calls = {l["crs"]: l for l in detail.get("locations", [])}
         o, d = calls.get(args.origin.upper(), {}), calls.get(args.destination.upper(), {})

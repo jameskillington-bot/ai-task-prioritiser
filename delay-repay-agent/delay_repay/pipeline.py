@@ -13,6 +13,7 @@ from .config import Settings, secret
 from .models import ClaimStatus, Compensation, DelayResult, Journey, Ticket, TrainOption
 from .operators import get_operator
 from .rtt import TrainData, analyse_journey, analyse_window, make_train_data
+from .rtt_nextgen import RttRateLimited
 from .store import Store
 from .tickets import extract_tickets, fetch_ticket_emails, involves_london, journeys_for, season_journeys
 
@@ -219,6 +220,9 @@ def run(settings: Settings, dry_run: bool = False, no_submit: bool = False) -> l
     for row in store.journeys(ClaimStatus.awaiting_travel):
         try:
             status = assess(settings, store, row, data, now)
+        except RttRateLimited as e:
+            report.append(str(e))
+            break
         except (LookupError, OSError) as e:
             store.update(row["id"], notes=[f"Delay check failed: {e}"])
             log.warning("Delay check failed for %s: %s", row["id"], e)

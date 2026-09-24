@@ -125,11 +125,42 @@ def test_window_search_over_next_gen(api):
     assert by_dep == {"17:25": 37, "17:55": 7, "18:25": 2}
 
 
-def test_refresh_token_is_exchanged(api):
+def test_refresh_token_is_exchanged_first(api):
     c = RttNextGenClient(REFRESH, api)
     assert c.info()["api_version"] == "2026-09-01"
+    c.service("W1755", "2026-09-23")
     paths = [p for p, _, _ in Handler.calls]
-    assert paths == ["/api/info", "/api/get_access_token", "/api/info"]
+    assert paths == ["/api/get_access_token", "/api/info", "/gb-nr/service"]
+
+
+def test_long_life_access_token_used_directly(api):
+    c = RttNextGenClient(ACCESS, api)
+    c.info()
+    c._cache.clear()
+    c.info()
+    paths = [p for p, _, _ in Handler.calls]
+    assert paths == ["/api/get_access_token", "/api/info", "/api/info"]  # one failed exchange, then direct
+
+
+def test_searches_are_hour_bucketed_and_cached(api):
+    c = RttNextGenClient(ACCESS, api)
+    c.search("WAT", "AHT", datetime(2026, 9, 23, 17, 25))
+    c.search("WAT", "AHT", datetime(2026, 9, 23, 17, 55))
+    searches = [q["timeFrom"] for p, q, _ in Handler.calls if p == "/gb-nr/location"]
+    assert searches == ["2026-09-23T17:00:00"]
+
+
+def test_hourly_allowance_exhausted_stops_cleanly(api, monkeypatch):
+    from delay_repay.rtt_nextgen import RttRateLimited
+
+    def limited(self):
+        self.send_response(429)
+        self.send_header("Retry-After", "1800")
+        self.send_header("content-length", "0")
+        self.end_headers()
+    monkeypatch.setattr(Handler, "do_GET", limited)
+    with pytest.raises(RttRateLimited):
+        RttNextGenClient(ACCESS, api).search("WAT", "AHT", datetime(2026, 9, 23, 17))
 
 
 def test_bad_token_is_a_clear_error(api):

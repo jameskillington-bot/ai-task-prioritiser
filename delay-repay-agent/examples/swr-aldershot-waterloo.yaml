@@ -20,7 +20,7 @@ mailbox:
   imap_host: imap.gmail.com
   username: you@gmail.com
   folder: "[Gmail]/All Mail"
-  lookback_days: 30
+  lookback_days: 14       # Realtime Trains free plan only has 14 days of history
   notify: true            # emails you when a train needs confirming
   smtp_host: smtp.gmail.com
 
